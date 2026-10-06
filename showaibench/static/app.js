@@ -489,7 +489,8 @@ function renderCharts() {
             name: `${sname} / ${profile} (x${conc}) / ${runId}`,
             marker: { color },
           });
-          g.entries.push({ label: `${sname}/${runId.slice(-6)}`, color });
+          const model = doc.servers?.[sname]?.model || "?";
+          g.entries.push({ label: `${sname}/${model}/${runId.slice(-6)}`, color });
         }
       }
     }
