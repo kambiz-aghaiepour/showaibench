@@ -440,24 +440,13 @@ function renderCharts() {
   for (const metric of metrics) {
     const card = el("div", { class: "card" });
     card.append(el("h3", { text: metric.title }));
-    const plot = el("div", { class: "plot" });
-    card.append(plot);
     container.append(card);
 
-    const traces = [];
-    const groups = []; // {key, label, depths: [], entries: [{label,color}]}
+    const groups = []; // {key, label, depths: [], entries: [{label,color}], traces: []}
     const gidx = new Map();
-    const cells = []; // group-major x cells {key, depth}
-    const cellIdx = new Map();
-    const cellFor = (gkey, d) => {
-      const k = `${gkey}|${d}`;
-      if (!cellIdx.has(k)) {
-        cellIdx.set(k, cells.length);
-        cells.push({ key: k, depth: d });
-      }
-      return k;
-    };
     let colorIdx = 0;
+    let yMin = Infinity;
+    let yMax = -Infinity;
     for (const runId of runIds) {
       const doc = state.runDocs[runId];
       if (!doc || doc.status !== "done") continue; // failed runs: banner, no partial graphs
@@ -473,18 +462,23 @@ function renderCharts() {
           const gkey = `${profile}|${conc}`;
           let g = gidx.get(gkey);
           if (!g) {
-            g = { key: gkey, label: `${profile} (x${conc})`, depths: [], entries: [] };
+            g = { key: gkey, label: `${profile} (x${conc})`, depths: [], entries: [], traces: [] };
             gidx.set(gkey, g);
             groups.push(g);
           }
           for (const r of rows) if (!g.depths.includes(r.depth)) g.depths.push(r.depth);
           const byDepth = new Map(rows.map((r) => [r.depth, r]));
+          const yvals = g.depths.map((d) => byDepth.get(d)?.[metric.field] ?? null);
+          for (const v of yvals) {
+            if (v == null) continue;
+            yMin = Math.min(yMin, v);
+            yMax = Math.max(yMax, v);
+          }
           const color = PALETTE[colorIdx % PALETTE.length];
           colorIdx++;
-          traces.push({
-            x: g.depths.map((d) => cellFor(gkey, d)),
-            y: g.depths.map((d) => byDepth.get(d)?.[metric.field] ?? null),
-            error_y: { type: "data", array: g.depths.map((d) => byDepth.get(d)?.[metric.err] || 0), visible: true },
+          g.traces.push({
+            x: g.depths.map((d) => `${g.key}|${d}`),
+            y: yvals,
             type: "bar",
             name: `${sname} / ${profile} (x${conc}) / ${runId}`,
             marker: { color },
@@ -495,61 +489,58 @@ function renderCharts() {
       }
     }
 
-    if (!traces.length) {
+    if (!groups.length || groups.every((g) => !g.traces.length)) {
       card.append(el("div", { class: "empty", text: "No data for this selection." }));
       continue;
     }
 
-    const totalCells = cells.length;
-    let maxRows = 1;
+    // one chart per test group (hosts x runs traces only) so bar thickness
+    // never depends on how many element types are selected; shared y range
+    // keeps the groups visually comparable
+    if (yMax === -Infinity) { yMin = 0; yMax = 1; }
+    const pad = (yMax - yMin) * 0.08 || 1;
+    const yrange = [yMin - pad, yMax + pad];
+    const row = el("div", { class: "subplot-row" });
+    card.append(row);
+    const pending = [];
     for (const g of groups) {
-      const chipsPerRow = Math.max(1, Math.floor((g.depths.length * 60) / 110));
-      maxRows = Math.max(maxRows, 1 + Math.ceil(g.entries.length / chipsPerRow));
+      const sub = el("div", { class: "subplot" });
+      sub.append(el("div", { class: "lg-head", text: g.label }));
+      const chips = el("div", { class: "lg-chips" });
+      for (const e of g.entries) {
+        chips.append(el("span", { class: "lg-chip" }, [
+          el("i", { style: `background:${e.color}` }),
+          el("span", { text: e.label }),
+        ]));
+      }
+      sub.append(chips);
+      const slot = el("div", { class: "plot-slot" });
+      sub.append(slot);
+      row.append(sub);
+      pending.push({ slot, g });
     }
-    const layout = {
-      margin: { l: 55, r: 12, t: 20 + 14 * maxRows, b: 60 },
-      showlegend: false,
-      font: { size: 11, color: cssVar("--text") },
-      paper_bgcolor: cssVar("--panel"),
-      plot_bgcolor: cssVar("--panel"),
-      barmode: "group",
-      xaxis: {
-        gridcolor: cssVar("--border"), zeroline: false, tickangle: 90,
-        tickvals: cells.map((c) => c.key),
-        ticktext: cells.map((c) => `d${c.depth}`),
-      },
-      yaxis: { gridcolor: cssVar("--border"), zeroline: false },
-    };
-    Plotly.newPlot(plot, traces, layout, { responsive: true, displayModeBar: false }).then(() => {
-      // per-category legend strip, aligned above each group of bars
-      const overlay = el("div", { class: "lg-overlay" });
-      plot.append(overlay);
-      const position = () => {
-        const xa = plot._fullLayout?.xaxis;
-        if (!xa || typeof xa._offset !== "number" || typeof xa._length !== "number") return;
-        const per = xa._length / totalCells;
-        overlay.replaceChildren();
-        for (const g of groups) {
-          const start = cellIdx.get(`${g.key}|${g.depths[0]}`);
-          if (start === undefined) continue;
-          const block = el("div", { class: "lg-block" });
-          block.style.left = `${xa._offset + start * per}px`;
-          block.style.width = `${g.depths.length * per}px`;
-          block.append(el("div", { class: "lg-head", text: g.label }));
-          const chips = el("div", { class: "lg-chips" });
-          for (const e of g.entries) {
-            chips.append(el("span", { class: "lg-chip" }, [
-              el("i", { style: `background:${e.color}` }),
-              el("span", { text: e.label }),
-            ]));
-          }
-          block.append(chips);
-          overlay.append(block);
-        }
-      };
-      plot.addEventListener("plotly_afterplot", position);
-      position();
-    });
+    // create the charts only after every slot exists, so each one measures
+    // its final flex width (creating them inline left earlier slots at the
+    // transient full-row width, which then never resized)
+    for (const { slot, g } of pending) {
+      Plotly.newPlot(slot, g.traces, {
+        margin: { l: 44, r: 8, t: 4, b: 36 },
+        showlegend: false,
+        font: { size: 11, color: cssVar("--text") },
+        paper_bgcolor: cssVar("--panel"),
+        plot_bgcolor: cssVar("--panel"),
+        barmode: "group",
+        xaxis: {
+          type: "category",
+          tickangle: 90,
+          tickvals: g.depths.map((d) => `${g.key}|${d}`),
+          ticktext: g.depths.map((d) => `d${d}`),
+          gridcolor: cssVar("--border"),
+          zeroline: false,
+        },
+        yaxis: { range: yrange, gridcolor: cssVar("--border"), zeroline: false },
+      }, { responsive: true, displayModeBar: false });
+    }
   }
 }
 

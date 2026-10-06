@@ -57,10 +57,13 @@ servers.conf ──► main.py (FastAPI, 127.0.0.1:8585)
   and element categories (`profile (xN)`); each group has a
   Select All / Unselect All toggle. Nothing is selected by default —
   select what you want to compare.
-- **Grouped bar charts**: one metric per card, full width. Bars are ordered
-  group-major (all `chat (x1)` cells, then `code-generation (x1)`, …), with
-  a legend block (header + color chips) aligned above each group; x labels
-  show context depth. Error bars show run-to-run std.
+- **Grouped bar charts**: one metric per card; each test group (`profile
+  (xN)`) gets its own chart side by side, with its legend above it
+  (header + color chips `server/model/run` matching the bar colors). All
+  charts in a card share one y-axis range so the groups stay comparable;
+  x labels show context depth. Bar width depends only on the number of
+  hosts x runs, so all groups render identical-width bars at any selection
+  of profile types. Run-to-run std is kept in the data (not drawn).
 - **Failure handling**: a run that ends with any failed entry shows a
   collapsed failure strip with the full tool log — and no partial graphs.
 - **Theme** toggle (dark/light).
@@ -94,8 +97,9 @@ servers' bars), Elements (which `profile (xN)` categories).
 
 ![Grouped legends](docs/screenshots/grouped-legends.png)
 
-Each test category has its own legend block aligned above its bars; chips
-match bar colors (`dgx/074620`, `llama-cpp/074620`).
+Each test category is its own chart with its legend block above it; chips
+match bar colors and include the model
+(`dgx/Qwen/Qwen3.8-27B/074620`, `llama-cpp/Qwen3.8-27B-UD-Q4_K_M/074620`).
 
 ---
 
