@@ -9,10 +9,40 @@ const METRICS = [
   { key: "e2e_ttft", title: "End-to-End TTFT (ms)", field: "e2e_ttft_ms", err: "e2e_ttft_ms_std" },
 ];
 
-const PALETTE = [
-  "#4da3ff", "#f0a500", "#3fb950", "#e35d8f", "#9d7bf7",
-  "#2ec4b6", "#f85149", "#b6c454", "#7aa2f7", "#e8b9f0",
-];
+/* Multi-line hover tooltip: per-bar identity + the measured value. The
+   array indexes reference each trace's customdata (see renderCharts). */
+const TOOLTIP_TEMPLATE =
+  "<b>%{customdata[0]} / %{customdata[2]} (x%{customdata[3]}) / %{customdata[7]}</b><br>" +
+  "<b>Server:</b> %{customdata[0]}<br>" +
+  "<b>Model:</b> %{customdata[1]}<br>" +
+  "<b>Concurrency:</b> %{customdata[3]}<br>" +
+  "<b>Depth:</b> %{customdata[4]}<br>" +
+  "<b>Date:</b> %{customdata[5]}<br>" +
+  "<b>Time:</b> %{customdata[6]}<br>" +
+  "<b>Profile:</b> %{customdata[2]}<br>" +
+  "<b>Run:</b> %{customdata[7]}<br>" +
+  "<b>Prompt/Completion:</b> %{customdata[8]} / %{customdata[9]}<br>" +
+  "<b>%{customdata[10]}:</b> %{y:.2f}<br>%{customdata[11]}";
+
+/* Deterministic trace colors with guaranteed variance: consecutive traces
+   (the adjacent bars inside a merged depth cell) are separated by the golden
+   angle in hue, so bars of the same profile/host at different concurrencies
+   never receive similar colors, no matter how many are selected. The offset
+   starts near the classic blue and keeps the dark theme look. */
+function traceColor(i) {
+  const h = (213.5 + i * 137.508) % 360;
+  return `hsl(${h.toFixed(1)}, 72%, 60%)`;
+}
+
+/* Hue distance in degrees between two hsl() color strings. */
+function hueGap(a, b) {
+  const hue = (s) => parseFloat(/hsl\(([\d.]+)/.exec(s)[1]);
+  const d = Math.abs(hue(a) - hue(b));
+  return Math.min(d, 360 - d);
+}
+
+/* Minimum hue separation between any two traces grouped in one chart. */
+const MIN_HUE_GAP = 45;
 
 const state = {
   servers: [],
@@ -400,23 +430,26 @@ async function refreshViewer() {
 
 /* ------------------------------------------------ chart visibility controls */
 
-function ctlCheckboxes(container, allBtn, items, selected, labelFn, onToggle) {
+function ctlCheckboxes(container, allBtn, items, selected, labelFn, onToggle, opts = {}) {
+  // Defaults: a plain one-to-one checkbox list over `selected`. opts may map
+  // an item to several keys (e.g. a profile -> its concurrency categories).
+  const isOn = opts.isChecked || ((it) => selected.has(it));
+  const setOn = opts.setChecked || ((it, on) => { on ? selected.add(it) : selected.delete(it); });
   container.replaceChildren();
   for (const it of items) {
     const inp = el("input", { type: "checkbox" });
-    inp.checked = selected.has(it);
+    inp.checked = isOn(it);
     inp.addEventListener("change", () => {
-      if (inp.checked) selected.add(it); else selected.delete(it);
+      setOn(it, inp.checked);
       onToggle();
     });
     container.append(el("label", {}, [inp, el("span", { text: labelFn(it) })]));
   }
-  const allOn = items.length > 0 && items.every((it) => selected.has(it));
+  const allOn = items.length > 0 && items.every((it) => isOn(it));
   allBtn.textContent = allOn ? "Unselect All" : "Select All";
   allBtn.disabled = items.length === 0;
   allBtn.onclick = () => {
-    if (allOn) for (const it of items) selected.delete(it);
-    else for (const it of items) selected.add(it);
+    for (const it of items) setOn(it, !allOn);
     onToggle();
   };
 }
@@ -454,10 +487,25 @@ function renderControls() {
     (k) => METRICS.find((m) => m.key === k).title, refresh,
   );
   ctlCheckboxes($("#ctl-hosts"), $("#ctl-hosts-all"), hosts, state.hostsOn, (s) => s, refresh);
-  ctlCheckboxes($("#ctl-elements"), $("#ctl-elements-all"), elements, state.elementsOn, (key) => {
-    const [profile, conc] = key.split("|");
-    return `${profile} (x${conc})`;
-  }, refresh);
+  if (state.combineConc) {
+    // One checkbox per profile; selecting it covers every concurrency of
+    // that profile present in the selected datasets.
+    const profiles = [...new Set(elements.map((e) => e.split("|")[0]))];
+    ctlCheckboxes($("#ctl-elements"), $("#ctl-elements-all"), profiles, state.elementsOn,
+      (p) => p, refresh, {
+        isChecked: (p) => elements.filter((e) => e.startsWith(`${p}|`)).every((e) => state.elementsOn.has(e)),
+        setChecked: (p, on) => {
+          for (const e of elements) if (e.startsWith(`${p}|`)) {
+            if (on) state.elementsOn.add(e); else state.elementsOn.delete(e);
+          }
+        },
+      });
+  } else {
+    ctlCheckboxes($("#ctl-elements"), $("#ctl-elements-all"), elements, state.elementsOn, (key) => {
+      const [profile, conc] = key.split("|");
+      return `${profile} (x${conc})`;
+    }, refresh);
+  }
 
   const cc = $("#combine-conc");
   cc.classList.toggle("on", state.combineConc);
@@ -467,6 +515,7 @@ function renderControls() {
     cc.classList.toggle("on", state.combineConc);
     cc.setAttribute("aria-checked", state.combineConc ? "true" : "false");
     renderCharts();
+    renderControls();
   };
 }
 
@@ -525,7 +574,7 @@ function renderCharts() {
           const gkey = combine ? profile : `${profile}|${conc}`;
           let g = gidx.get(gkey);
           if (!g) {
-            g = { key: gkey, label: profile, depths: [], entries: [], traces: [] };
+            g = { key: gkey, depths: [], entries: [], traces: [] };
             gidx.set(gkey, g);
             groups.push(g);
           }
@@ -537,17 +586,30 @@ function renderCharts() {
             yMin = Math.min(yMin, v);
             yMax = Math.max(yMax, v);
           }
-          const color = PALETTE[colorIdx % PALETTE.length];
-          colorIdx++;
+          const model = doc.servers?.[sname]?.model || "?";
+          const [runDate, runTime] = (doc.started_at || "?").split(" ");
+          let color = traceColor(colorIdx++);
+          // grouped bars must stay distinguishable: skip any candidate whose
+          // hue is too close to a trace already in this chart
+          while (g.traces.some((t) => hueGap(t.marker.color, color) < MIN_HUE_GAP)) {
+            color = traceColor(colorIdx++);
+          }
+          const custom = g.depths.map((d) => {
+            const r = byDepth.get(d);
+            if (!r) return [sname, model, profile, conc, d, runDate, runTime, runId, null, null, metric.title, ""];
+            const std = metric.err && r[metric.err] != null ? `± ${r[metric.err].toFixed(2)}` : "";
+            return [sname, model, profile, conc, d, runDate, runTime, runId, r.pp ?? null, r.tg ?? null, metric.title, std];
+          });
           g.traces.push({
             x: g.depths.map((d) => `${g.key}|${d}`),
             y: yvals,
             type: "bar",
-            name: `${sname} / ${profile} (x${conc}) / ${runId}`,
+            name: "",
             marker: { color },
+            customdata: custom,
+            hovertemplate: TOOLTIP_TEMPLATE,
           });
-          const model = doc.servers?.[sname]?.model || "?";
-          g.entries.push({ label: `${sname}/${model}/${runId.slice(-6)}`, color, profile, conc });
+          g.entries.push({ sname, color, profile, conc });
         }
       }
     }
@@ -568,12 +630,14 @@ function renderCharts() {
     const pending = [];
     for (const g of groups) {
       const sub = el("div", { class: "subplot" });
-      if (!combine) sub.append(el("div", { class: "lg-head", text: `${g.label} (x${g.entries[0].conc})` }));
       const chips = el("div", { class: "lg-chips" });
       for (const e of g.entries) {
         chips.append(el("span", { class: "lg-chip" }, [
           el("i", { style: `background:${e.color}` }),
-          el("span", { text: combine ? `${e.profile} (x${e.conc}) - ${e.label}` : e.label }),
+          el("span", { class: "lg-lines" }, [
+            el("span", { class: "lg-l1", text: combine ? e.profile : `${e.profile} (x${e.conc})` }),
+            el("span", { class: "lg-l2", text: e.sname }),
+          ]),
         ]));
       }
       sub.append(chips);

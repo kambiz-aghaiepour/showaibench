@@ -56,15 +56,24 @@ servers.conf ──► main.py (FastAPI, 127.0.0.1:8585)
   **✕ Kill** button (with confirm): `POST /api/run/{id}/kill` terminates
   every live benchy process of that run, and the run is marked failed.
 - **Chart controls** (right panel): enable/disable graphs (metrics), hosts,
-  and element categories (`profile (xN)`); each group has a
-  Select All / Unselect All toggle. Nothing is selected by default —
-  select what you want to compare.
+  and element categories; each group has a Select All / Unselect All
+  toggle. Nothing is selected by default — select what you want to compare.
+  With **Combine Concurrencies** on, Elements shows one checkbox per
+  profile (`chat`, `fixed-length`, …) — ticking it selects **all**
+  concurrency levels of that profile at once. With the switch off, Elements
+  lists one checkbox per `profile (xN)` category.
 - **Combine Concurrencies** switch (below Elements, **on by default**):
   when on, all selected concurrency levels of a profile are merged into a
   single chart — bars of `x1/x2/x3 …` sit edge-to-edge in each depth cell,
-  and the legend is one chip per run:
-  `profile (xN) - server/model/run`. Switch it off to go back to one chart
-  per `profile (xN)` with the usual gaps.
+  and the legend is one two-line chip per run: the profile on the first
+  line (`chat`, or `chat (x1)` when the switch is off) and the server name
+  below it. Switch it off to go back to one chart per `profile (xN)` with
+  the usual gaps.
+- **Bar tooltip**: hovering a bar shows a single multi-line label — a bold
+  header (`dgx / chat (x3) / 20261006-111627`) with the full identity and
+  measurement of that bar underneath: Server, Model, Concurrency, Depth,
+  Date, Time, Profile, Run, Prompt/Completion sizes, the metric value and
+  its std deviation.
 - **Grouped bar charts**: one metric per card; each test group gets its own
   chart side by side, with its legend above it (header + color chips
   `server/model/run` matching the bar colors). All charts in a card share
@@ -101,22 +110,24 @@ The run compares three completed benchmarks against the same `dgx` server
 **3 / 2 / 1** — the three most recent "done" runs. The charts show
 **Combine Concurrencies** at work (default on): `chat` and `fixed-length`
 each render as one chart with the three concurrency levels adjacent in
-every depth cell, and the legend chips identify each run
-(`chat (x3) - dgx/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp/111627` …).
+every depth cell; legend chips are compact (`chat` over `dgx`) and the
+full details live in each bar's hover tooltip.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ![Chart controls](docs/screenshots/chart-controls.png)
 
 The right panel filters: Graphs (which metric cards render), Hosts (which
-servers' bars), Elements (which `profile (xN)` categories) — and the
+servers' bars), Elements (one checkbox per profile — all of that profile's
+concurrency levels — when Combine Concurrencies is on) — and the
 **Combine Concurrencies** switch.
 
 ![Grouped legends](docs/screenshots/grouped-legends.png)
 
-With Combine on, each profile is its own chart with a per-trace legend
-above it; chips match bar colors and include the concurrency and model
-(`chat (x2) - dgx/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp/105008`).
+With Combine on, each profile is its own chart with a compact two-line
+legend above it (`chat` / `dgx`); hovering any bar reveals the full
+identity — server, model, concurrency, depth, date, time, run, and the
+measured value with its std.
 
 ---
 
