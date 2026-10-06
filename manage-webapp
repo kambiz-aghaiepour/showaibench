@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# manage-webapp - start/stop the show-ai-bench-results web app.
+#
+#   ./manage-webapp --start   # launch (or report if already serving)
+#   ./manage-webapp --stop    # stop the instance (pidfile, else port scan)
+#
+# State: pidfile  .webapp.pid   (next to this script)
+#        logfile  webapp.log    (next to this script)
+set -euo pipefail
+
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_FILE="$APP_DIR/.webapp.pid"
+LOG_FILE="$APP_DIR/webapp.log"
+PORT="${WEBAPP_PORT:-8585}"
+URL="http://127.0.0.1:$PORT"
+PY="$APP_DIR/.venv/bin/python"
+
+port_serving() {
+  curl -fsS --max-time 2 "$URL/api/health" >/dev/null 2>&1
+}
+
+running_runs() {
+  curl -fsS --max-time 2 "$URL/api/runs" 2>/dev/null | \
+    python3 -c "import json,sys;print(sum(1 for r in json.load(sys.stdin)['runs'] if r['status']=='running'))" 2>/dev/null || echo 0
+}
+
+start() {
+  if [ -f "$PID_FILE" ]; then
+    local pid; pid="$(cat "$PID_FILE")"
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "already running (pid $pid) at $URL"
+      exit 0
+    fi
+    rm -f "$PID_FILE"  # stale
+  fi
+  if port_serving; then
+    echo "port $PORT is already serving the app but not by this script's pidfile"
+    echo "-> ./manage-webapp --verify to check config, or --stop to take it over"
+    exit 1
+  fi
+  if [ "$(running_runs)" != "0" ]; then
+    echo "warning: a benchmark is running; stopping/restarting will kill it"
+  fi
+  nohup "$PY" "$APP_DIR/main.py" >>"$LOG_FILE" 2>&1 &
+  echo $! >"$PID_FILE"
+  for _ in $(seq 1 40); do
+    if port_serving; then
+      echo "started (pid $(cat "$PID_FILE")) - UI: $URL (log: $LOG_FILE)"
+      exit 0
+    fi
+    if ! kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+      echo "process exited during startup; see $LOG_FILE" >&2
+      rm -f "$PID_FILE"
+      exit 1
+    fi
+    sleep 0.5
+  done
+  echo "timed out waiting for $URL; see $LOG_FILE" >&2
+  exit 1
+}
+
+stop() {
+  local pid=""
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    pid="$(cat "$PID_FILE")"
+  else
+    pid="$(pgrep -f "[.]venv/bin/python main.py" | head -1 || true)"
+  fi
+  if [ -z "$pid" ]; then
+    rm -f "$PID_FILE"
+    echo "not running"
+    exit 0
+  fi
+  if [ "$(running_runs)" != "0" ]; then
+    echo "warning: a benchmark is running - stopping the app will kill it"
+  fi
+  kill "$pid"
+  for _ in $(seq 1 20); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.5
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid"
+    echo "stopped (pid $pid, force-killed)"
+  else
+    echo "stopped (pid $pid)"
+  fi
+  rm -f "$PID_FILE"
+  # kill any orphans (stale instances not in the pidfile)
+  local extra
+  extra="$(pgrep -f "[.]venv/bin/python main.py" || true)"
+  if [ -n "$extra" ]; then
+    kill $extra 2>/dev/null || true
+  fi
+}
+
+verify() {
+  if ! port_serving; then
+    echo "not running: no response from $URL"
+    exit 1
+  fi
+  local out
+  out="$(APP_DIR="$APP_DIR" URL="$URL" python3 - <<'PYEOF'
+import json, os, sys, urllib.request
+sys.path.insert(0, os.environ["APP_DIR"])
+from showaibench.config import load_servers
+
+cfg = load_servers(os.path.join(os.environ["APP_DIR"], "servers.conf"))
+live = {s["name"]: s for s in json.load(urllib.request.urlopen(
+    os.environ["URL"] + "/api/servers", timeout=5))["servers"]}
+
+mismatch = False
+for name, sc in cfg.items():
+    lv = live.get(name)
+    if lv is None:
+        print(f"  - {name}: in servers.conf but not loaded by the app")
+        mismatch = True
+        continue
+    for label, key, conf_v in (
+        ("url", "url", sc.url),
+        ("model", "model", sc.model),
+        ("tokenizer-name", "tokenizer_name", sc.tokenizer_name),
+        ("api-key", "has_api_key", bool(sc.api_key)),
+    ):
+        if str(bool(conf_v) if label == "api-key" else conf_v) != str(lv.get(key)):
+            print(f"  - {name}.{label}: running={lv.get(key)!r} config={conf_v!r}")
+            mismatch = True
+for name in live:
+    if name not in cfg:
+        print(f"  - {name}: running in the app but not in servers.conf")
+        mismatch = True
+
+print("MISMATCH" if mismatch else "IN_SYNC")
+for name in cfg:
+    print(f"    {name}: {cfg[name].url} model={cfg[name].model}")
+PYEOF
+)"
+  local rc=0
+  echo "$out" | grep -q MISMATCH && rc=1
+  if [ "$rc" = "0" ]; then
+    echo "ok: $URL is up and servers.conf is in sync"
+  else
+    echo "OUT OF SYNC: restart to apply servers.conf (./manage-webapp --stop && ./manage-webapp --start)"
+  fi
+  echo "$out" | grep -v '^MISMATCH$' | grep -v '^IN_SYNC$'
+  local active
+  active="$(running_runs)"
+  if [ "$active" != "0" ]; then
+    echo "note: $active benchmark run(s) active - restarting will kill them"
+  fi
+  exit $rc
+}
+
+case "${1:-}" in
+  --start) start ;;
+  --stop) stop ;;
+  --verify) verify ;;
+  *) echo "usage: $0 --start | --stop | --verify" >&2; exit 2 ;;
+esac

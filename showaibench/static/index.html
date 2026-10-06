@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>show-ai-bench-results</title>
+  <link rel="stylesheet" href="/static/style.css?v=11">
+  <script src="/static/plotly.min.js"></script>
+  <script src="/static/app.js?v=23" defer></script>
+</head>
+<body>
+  <header>
+    <h1>show-ai-bench-results</h1>
+    <button id="theme-toggle" title="Toggle light/dark theme">🌓</button>
+  </header>
+
+  <main>
+    <aside id="controls">
+      <section>
+        <div class="ctl-head"><h2>Servers</h2><button class="ctl-all" id="servers-all">Select All</button></div>
+        <div id="servers" class="choices"></div>
+      </section>
+      <section>
+        <div class="ctl-head"><h2>Profiles</h2><button class="ctl-all" id="profiles-all">Select All</button></div>
+        <div id="profiles" class="choices"></div>
+      </section>
+      <section>
+        <h2>Benchmark settings</h2>
+        <div class="settings">
+          <label>Runs
+            <select id="set-runs">
+              <option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option>
+              <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+            </select>
+          </label>
+          <label>Concurrency
+            <select id="set-concurrency">
+              <option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+              <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+              <option>11</option><option>12</option><option>13</option><option>14</option><option>15</option><option>16</option>
+            </select>
+          </label>
+          <label>Depths
+            <select id="set-depths">
+              <option value="0">0</option>
+              <option value="0 4096">0 4096</option>
+              <option value="0 4096 8192" selected>0 4096 8192</option>
+              <option value="0 4096 8192 16384">0 4096 8192 16384</option>
+              <option value="0 4096 8192 16384 32768">0 4096 8192 16384 32768</option>
+            </select>
+          </label>
+        </div>
+        <div id="time-est" class="status-note"></div>
+      </section>
+      <button id="start-btn" class="primary" disabled>Start</button>
+      <div id="run-status"></div>
+    </aside>
+
+    <section id="results">
+      <div class="toolbar">
+        <div class="ms" id="runs-ms">
+          <button class="ms-btn" id="runs-ms-btn">Runs: 0 selected ▾</button>
+          <div class="ms-panel hidden" id="runs-ms-panel"></div>
+        </div>
+        <div class="ms" id="profs-ms">
+          <button class="ms-btn" id="profs-ms-btn">Profiles: 0 selected ▾</button>
+          <div class="ms-panel hidden" id="profs-ms-panel"></div>
+        </div>
+        <span id="run-meta" class="muted"></span>
+      </div>
+      <div id="run-live"></div>
+      <div id="run-errors"></div>
+      <div id="charts"></div>
+    </section>
+    <aside id="chart-controls">
+      <h2>Chart controls</h2>
+      <section>
+        <div class="ctl-head"><h3>Graphs</h3><button class="ctl-all" id="ctl-metrics-all">Select All</button></div>
+        <div id="ctl-metrics" class="ctl-list"></div>
+      </section>
+      <section>
+        <div class="ctl-head"><h3>Hosts</h3><button class="ctl-all" id="ctl-hosts-all">Select All</button></div>
+        <div id="ctl-hosts" class="ctl-list"></div>
+      </section>
+      <section>
+        <div class="ctl-head"><h3>Elements</h3><button class="ctl-all" id="ctl-elements-all">Select All</button></div>
+        <div id="ctl-elements" class="ctl-list ctl-scroll"></div>
+      </section>
+    </aside>
+  </main>
+</body>
+</html>

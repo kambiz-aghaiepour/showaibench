@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+results/
+archive/
+.webapp.pid
+webapp.log
+servers.conf
+.DS_Store
