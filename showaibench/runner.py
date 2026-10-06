@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from .benchmarker import BenchmarkError, log_name, run_benchmark
+from .benchmarker import BenchmarkError, kill_run_procs, log_name, run_benchmark
 from .config import DEFAULT_SETTINGS, PROFILES, ServerConfig
 
 
@@ -33,6 +33,7 @@ class Run:
     # server -> profile -> {status, error, rows, raw_file}
     results: dict = field(default_factory=dict)
     settings: dict = field(default_factory=dict)
+    killed: bool = False
 
 
 class RunManager:
@@ -98,6 +99,17 @@ class RunManager:
         ).start()
         return run_id
 
+    def kill(self, run_id: str) -> int:
+        """Terminate all live benchy processes of a running run; mark it killed."""
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                raise KeyError(f"unknown run: {run_id}")
+            if run.status != "running":
+                raise ValueError(f"run {run_id} is not running")
+            run.killed = True
+        return kill_run_procs(run_id)
+
     def _execute(self, run: Run) -> None:
         run_dir = self._run_dir(run.id)
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -112,10 +124,13 @@ class RunManager:
 
         with self._lock:
             run.finished_at = _now()
-            run.status = "error" if any(
-                run.results.get(s, {}).get(p, {}).get("status") == "error"
-                for s in run.servers for p in run.profiles
-            ) else "done"
+            if run.killed:
+                run.status = "error"
+            else:
+                run.status = "error" if any(
+                    run.results.get(s, {}).get(p, {}).get("status") == "error"
+                    for s in run.servers for p in run.profiles
+                ) else "done"
         self._persist(run)
 
     def _server_worker(self, run: Run, server_name: str, run_dir: Path) -> None:
@@ -130,6 +145,11 @@ class RunManager:
             }
             with self._lock:
                 run.results.setdefault(server_name, {})[profile] = entry
+            if run.killed:
+                with self._lock:
+                    entry["status"] = "error"
+                    entry["error"] = "killed by user"
+                continue
             try:
                 out = run_benchmark(self.tool, server, profile, run_dir, settings=run.settings)
                 with self._lock:
@@ -140,12 +160,12 @@ class RunManager:
             except BenchmarkError as exc:
                 with self._lock:
                     entry["status"] = "error"
-                    entry["error"] = str(exc)
+                    entry["error"] = "killed by user" if run.killed else str(exc)
                     entry["log_file"] = exc.log_file or entry["log_file"]
             except Exception as exc:  # noqa: BLE001 - record and continue with next profile
                 with self._lock:
                     entry["status"] = "error"
-                    entry["error"] = str(exc)
+                    entry["error"] = "killed by user" if run.killed else str(exc)
 
     # ---------------------------------------------------------------- storage
 
@@ -228,7 +248,10 @@ class RunManager:
                 "started_at": doc["started_at"],
                 "finished_at": None,
                 "status": "running",
-                "servers": list(doc["servers"]),
+                "servers": [
+                    {"name": n, "model": s.get("model", "")}
+                    for n, s in doc["servers"].items()
+                ],
                 "profiles": doc["profiles"],
             })
         for run_json in sorted(self.results_dir.glob("*/run.json"), reverse=True):
@@ -241,7 +264,10 @@ class RunManager:
                 "started_at": doc.get("started_at"),
                 "finished_at": doc.get("finished_at"),
                 "status": doc.get("status"),
-                "servers": list(doc.get("servers", {})),
+                "servers": [
+                    {"name": n, "model": s.get("model", "")}
+                    for n, s in (doc.get("servers") or {}).items()
+                ],
                 "profiles": doc.get("profiles", []),
             })
         return out

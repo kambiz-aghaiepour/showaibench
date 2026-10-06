@@ -6,7 +6,7 @@
   <title>show-ai-bench-results</title>
   <link rel="stylesheet" href="/static/style.css?v=11">
   <script src="/static/plotly.min.js"></script>
-  <script src="/static/app.js?v=30" defer></script>
+  <script src="/static/app.js?v=36" defer></script>
 </head>
 <body>
   <header>
@@ -85,6 +85,13 @@
       <section>
         <div class="ctl-head"><h3>Elements</h3><button class="ctl-all" id="ctl-elements-all">Select All</button></div>
         <div id="ctl-elements" class="ctl-list ctl-scroll"></div>
+      </section>
+      <section>
+        <div class="ctl-head"><h3>Combine Concurrencies</h3></div>
+        <button class="switch on" id="combine-conc" role="switch" aria-checked="true" title="Group depth bars of one profile across all selected concurrencies next to each other">
+          <span class="switch-knob"></span>
+        </button>
+        <div class="status-note">On: each profile chart merges all selected concurrencies (bars adjacent, shared edges); Off: one chart per profile × concurrency.</div>
       </section>
     </aside>
   </main>

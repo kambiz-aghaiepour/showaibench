@@ -1,27 +1,24 @@
-# showaibench - example server configuration
-#
-# Copy this file to servers.conf and edit the values:
-#   cp servers.conf.example servers.conf
-#
-# Each section is one OpenAI-compatible inference server to benchmark.
-# All fields are optional except url, model and tokenizer-name.
+; show-ai-bench-results - inference servers (OpenAI-compatible)
+;
+; Fields:
+;   url            = scheme + host + port (the app appends /v1)
+;   model          = model id sent in the request body (OpenAI "model" field)
+;   tokenizer-name = HF Hub repo used for prompt sizing / token counting
+;   api-key        = optional Bearer token (omit or leave blank for no auth)
+;   extra-body     = extra JSON fields merged into benchmark chat completions
+;                    (here: disable reasoning/thinking so the benchmark measures
+;                     answer tokens, not chain-of-thought)
 
 [dgx]
-# scheme + host + port (the app appends /v1 to every request path)
-url = http://192.168.1.10:8000
-# model id as it appears in the server's /v1/models response
-model = org/model-name
-# HF Hub repo used by llama-benchy for token counting (prompt sizing)
-tokenizer-name = org/model-name
-# optional Bearer token sent as Authorization: Bearer <api-key> (omit/empty = no auth)
+url = http://192.168.1.39:8000
+model = Qwen/Qwen3.8-27B
+tokenizer-name = Qwen/Qwen3.8-27B
 api-key =
-# extra JSON fields merged into benchmark chat-completion requests
-# (common example: disable reasoning/thinking for the benchmark)
 extra-body = chat_template_kwargs={"enable_thinking":false}
 
-[local]
+[llama-cpp]
 url = http://127.0.0.1:11434
-model = my-local-model
-tokenizer-name = org/local-model
+model = Qwen3.8-27B-UD-Q4_K_M
+tokenizer-name = Qwen/Qwen3.8-27B
 api-key =
-extra-body =
+extra-body = chat_template_kwargs={"enable_thinking":false}

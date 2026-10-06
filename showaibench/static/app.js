@@ -27,7 +27,8 @@ const state = {
   sawRunning: false,
   metricsOn: new Set(), // metric keys shown
   hostsOn: new Set(),   // server names included in charts
-  elementsOn: new Set(), // "server|profile|runId" traces shown
+  elementsOn: new Set(), // "profile|concurrency" element categories shown
+  combineConc: true,    // merge a profile's concurrencies into one chart
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -235,7 +236,14 @@ function renderLive() {
   if (!running.length) return;
   for (const [id, st] of running) {
     const box = el("div", { class: "live-strip" });
-    box.append(el("h4", { text: `Running ${id} (started ${st.started_at})` }));
+    const head = el("div", { class: "live-head" });
+    head.append(el("h4", { text: `Running ${id} (started ${st.started_at})` }));
+    head.append(el("button", {
+      class: "kill-btn",
+      text: "✕ Kill",
+      onclick: () => confirmKill(id),
+    }));
+    box.append(head);
     const grid = el("div", { class: "live-rows" });
     for (const row of st.rows) {
       const label = row.status === "ok" ? "done" : row.status;
@@ -258,6 +266,44 @@ function renderLive() {
   for (const pre of host.querySelectorAll("pre.log")) {
     pre.scrollTop = pre.scrollHeight;
   }
+}
+
+/* Modal confirm before killing a running job; OK terminates every live
+   benchy process of the run (backend marks entries as killed). */
+function confirmKill(runId) {
+  const overlay = el("div", { class: "modal-overlay" });
+  const modal = el("div", { class: "modal" });
+  modal.append(el("h3", { text: "Kill benchmark run?" }));
+  modal.append(el("p", {
+    text: `Run ${runId} is still running. Killing it terminates the benchmark processes; its partial results will be marked as failed.`,
+  }));
+  const actions = el("div", { class: "modal-actions" });
+  const cancel = el("button", { class: "btn", text: "Cancel" });
+  const ok = el("button", { class: "btn danger", text: "OK" });
+  const close = (remove = true) => {
+    if (remove) overlay.remove();
+    document.removeEventListener("keydown", esc);
+  };
+  const esc = (e) => { if (e.key === "Escape") close(); };
+  cancel.onclick = () => close();
+  ok.onclick = async () => {
+    ok.disabled = true;
+    ok.textContent = "Killing…";
+    try {
+      const res = await api(`/api/run/${runId}/kill`, { method: "POST" });
+      close();
+    } catch (err) {
+      ok.disabled = false;
+      ok.textContent = "OK";
+      modal.append(el("p", { class: "modal-error", text: `kill failed: ${err.message}` }));
+    }
+  };
+  actions.append(cancel, ok);
+  modal.append(actions);
+  overlay.append(modal);
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  document.addEventListener("keydown", esc);
+  document.body.append(overlay);
 }
 
 /* -------------------------------------------------- multi-select dropdowns */
@@ -295,6 +341,18 @@ function makeMultiSelect(btnSel, panelSel, labelPrefix, onApply) {
 
 /* ------------------------------------------------------------- runs */
 
+function runsLabel(id) {
+  const r = state.runs.find((x) => x.id === id);
+  const doc = state.runDocs[id];
+  const servers = r?.servers || [];
+  const parts = servers.map((s) => {
+    const name = typeof s === "string" ? s : s.name;
+    const model = (typeof s === "object" && s.model) || doc?.servers?.[name]?.model;
+    return model ? `${name}/${model}` : name;
+  });
+  return `${id} — ${doc?.status || r?.status || "?"}${parts.length ? ` [${parts.join(", ")}]` : ""}`;
+}
+
 function syncRunsList(runs) {
   const key = runs.map((r) => r.id).join(",");
   if (key === state.runsKey) return false;
@@ -302,15 +360,7 @@ function syncRunsList(runs) {
   state.runs = runs;
   const valid = new Set(runs.map((r) => r.id));
   for (const id of [...state.selectedRuns]) if (!valid.has(id)) state.selectedRuns.delete(id);
-  runsMS.render(
-    runs.map((r) => r.id),
-    state.selectedRuns,
-    (id) => {
-      const r = runs.find((x) => x.id === id);
-      const hosts = (r?.servers || []).join(", ");
-      return `${id} — ${state.runDocs[id]?.status || r?.status || "?"}${hosts ? ` [${hosts}]` : ""}`;
-    },
-  );
+  runsMS.render(runs.map((r) => r.id), state.selectedRuns, runsLabel);
   return true;
 }
 
@@ -330,6 +380,8 @@ async function refreshViewer() {
       if (!state.runDocs[id]) state.runDocs[id] = await api(`/api/runs/${id}`);
     }),
   );
+  // re-render run labels now that models resolve from the fetched docs
+  runsMS.render(state.runs.map((r) => r.id), state.selectedRuns, runsLabel);
 
   const profiles = [...new Set(
     [...state.selectedRuns].flatMap((id) => state.runDocs[id]?.profiles || []),
@@ -406,6 +458,16 @@ function renderControls() {
     const [profile, conc] = key.split("|");
     return `${profile} (x${conc})`;
   }, refresh);
+
+  const cc = $("#combine-conc");
+  cc.classList.toggle("on", state.combineConc);
+  cc.setAttribute("aria-checked", state.combineConc ? "true" : "false");
+  cc.onclick = () => {
+    state.combineConc = !state.combineConc;
+    cc.classList.toggle("on", state.combineConc);
+    cc.setAttribute("aria-checked", state.combineConc ? "true" : "false");
+    renderCharts();
+  };
 }
 
 function cssVar(name) {
@@ -442,7 +504,8 @@ function renderCharts() {
     card.append(el("h3", { text: metric.title }));
     container.append(card);
 
-    const groups = []; // {key, label, depths: [], entries: [{label,color}], traces: []}
+    const combine = state.combineConc;
+    const groups = []; // {key, label, depths: [], entries: [{label,color,profile,conc}], traces: []}
     const gidx = new Map();
     let colorIdx = 0;
     let yMin = Infinity;
@@ -459,10 +522,10 @@ function renderCharts() {
           if (!rows.length) continue;
           const conc = rows[0].concurrency;
           if (!state.elementsOn.has(`${profile}|${conc}`)) continue;
-          const gkey = `${profile}|${conc}`;
+          const gkey = combine ? profile : `${profile}|${conc}`;
           let g = gidx.get(gkey);
           if (!g) {
-            g = { key: gkey, label: `${profile} (x${conc})`, depths: [], entries: [], traces: [] };
+            g = { key: gkey, label: profile, depths: [], entries: [], traces: [] };
             gidx.set(gkey, g);
             groups.push(g);
           }
@@ -484,7 +547,7 @@ function renderCharts() {
             marker: { color },
           });
           const model = doc.servers?.[sname]?.model || "?";
-          g.entries.push({ label: `${sname}/${model}/${runId.slice(-6)}`, color });
+          g.entries.push({ label: `${sname}/${model}/${runId.slice(-6)}`, color, profile, conc });
         }
       }
     }
@@ -505,12 +568,12 @@ function renderCharts() {
     const pending = [];
     for (const g of groups) {
       const sub = el("div", { class: "subplot" });
-      sub.append(el("div", { class: "lg-head", text: g.label }));
+      if (!combine) sub.append(el("div", { class: "lg-head", text: `${g.label} (x${g.entries[0].conc})` }));
       const chips = el("div", { class: "lg-chips" });
       for (const e of g.entries) {
         chips.append(el("span", { class: "lg-chip" }, [
           el("i", { style: `background:${e.color}` }),
-          el("span", { text: e.label }),
+          el("span", { text: combine ? `${e.profile} (x${e.conc}) - ${e.label}` : e.label }),
         ]));
       }
       sub.append(chips);
@@ -530,6 +593,7 @@ function renderCharts() {
         paper_bgcolor: cssVar("--panel"),
         plot_bgcolor: cssVar("--panel"),
         barmode: "group",
+        bargroupgap: combine ? 0 : 0.1,
         xaxis: {
           type: "category",
           tickangle: 90,

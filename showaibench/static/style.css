@@ -111,6 +111,20 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
   overflow-y: auto;
 }
 #chart-controls h2 { font-size: 15px; margin: 0 0 8px; }
+.switch {
+  width: 46px; height: 24px; border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  position: relative; cursor: pointer; padding: 0; margin: 4px 0 6px;
+}
+.switch .switch-knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--muted);
+  transition: left 0.15s ease, background 0.15s ease;
+}
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on .switch-knob { left: 24px; background: #fff; }
 #chart-controls h3 { font-size: 11px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .ctl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
 .ctl-head h2 { font-size: 14px; margin: 0; }
@@ -197,6 +211,7 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
 .ms-panel label:hover { background: var(--panel-2); }
 .hidden { display: none; }
 
+#results { min-width: 0; }
 #results .toolbar {
   display: flex;
   align-items: center;
@@ -222,7 +237,45 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
   padding: 10px 14px;
   background: var(--panel);
 }
-#run-live h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+#run-live .live-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+#run-live h4 { margin: 0; font-size: 13px; color: var(--accent); }
+.kill-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--err, #c0392b);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--err, #c0392b);
+  cursor: pointer;
+  flex: none;
+}
+.kill-btn:hover { background: var(--err, #c0392b); color: #fff; }
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal {
+  width: min(460px, 92vw);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.modal h3 { margin: 0 0 8px; font-size: 16px; }
+.modal p { margin: 0 0 14px; font-size: 13px; color: var(--text); }
+.modal .modal-error { color: var(--err, #c0392b); margin-top: 8px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.modal-actions .btn {
+  font-size: 13px; padding: 7px 18px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  cursor: pointer;
+}
+.modal-actions .btn.danger { border-color: #c0392b; background: #c0392b; color: #fff; }
 #run-live .row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
 #run-live .live-entry { margin-top: 8px; }
 #run-live .live-entry-label {
@@ -275,14 +328,16 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
 #charts {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+  min-width: 0;
 }
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
+  min-width: 0;
 }
 .card h3 {
   margin: 2px 0 6px;
@@ -290,8 +345,8 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
   color: var(--text);
   font-weight: 600;
 }
-.card .subplot-row { display: flex; gap: 10px; align-items: flex-start; }
-.card .subplot { flex: 1 1 0; min-width: 0; text-align: center; }
+.card .subplot-row { display: flex; gap: 10px; align-items: flex-start; overflow-x: auto; }
+.card .subplot { flex: 1 1 0; min-width: 190px; text-align: center; }
 .card .plot-slot { width: 100%; height: 260px; }
 .lg-head {
   font-size: 11px; font-weight: 600; color: var(--text);

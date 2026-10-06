@@ -70,6 +70,16 @@ def create_app(manager: RunManager, config_path: Path):
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.post("/api/run/{run_id}/kill")
+    def kill_run(run_id: str):
+        try:
+            killed = manager.kill(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"killed": killed}
+
     @app.get("/api/health")
     def health():
         return {"ok": True}

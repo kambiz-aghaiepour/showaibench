@@ -20,6 +20,35 @@ from .config import PROFILE_PRESETS, ServerConfig
 TOOL_NAME = "llama-benchy"
 APP_ROOT = Path(__file__).resolve().parent.parent
 
+# run_id -> live llama-benchy subprocesses (for the kill endpoint)
+ACTIVE_PROCS: dict[str, list] = {}
+
+
+def register_proc(run_id: str, proc) -> None:
+    ACTIVE_PROCS.setdefault(run_id, []).append(proc)
+
+
+def unregister_proc(run_id: str, proc) -> None:
+    procs = ACTIVE_PROCS.get(run_id)
+    if not procs:
+        return
+    try:
+        procs.remove(proc)
+    except ValueError:
+        pass
+    if not procs:
+        ACTIVE_PROCS.pop(run_id, None)
+
+
+def kill_run_procs(run_id: str) -> int:
+    procs = ACTIVE_PROCS.pop(run_id, [])
+    for proc in procs:
+        try:
+            proc.terminate()
+        except OSError:
+            pass
+    return len(procs)
+
 
 class BenchmarkError(RuntimeError):
     """llama-benchy failed; carries the name of its log file for live tailing."""
@@ -190,7 +219,11 @@ def run_benchmark(
             proc = subprocess.Popen(
                 cmd, cwd=tmp, stdout=logf, stderr=subprocess.STDOUT, env=_tool_env()
             )
-            rc = proc.wait()
+            register_proc(workdir.name, proc)
+            try:
+                rc = proc.wait()
+            finally:
+                unregister_proc(workdir.name, proc)
         if not save_path.exists():
             log_text = log_path.read_text(errors="replace") if log_path.exists() else ""
             raise BenchmarkError(

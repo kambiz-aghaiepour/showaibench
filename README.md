@@ -52,18 +52,30 @@ servers.conf ──► main.py (FastAPI, 127.0.0.1:8585)
 - **Live panel**: while a job runs, one `tail -f`-style pane per active
   `llama-benchy` process (i.e. per server), refreshed every 3 s. Reloading
   the page mid-run keeps the live panel (a watcher attaches on load) and
-  the page **auto-reloads when the job completes**.
+  the page **auto-reloads when the job completes**. Each running pane has a
+  **✕ Kill** button (with confirm): `POST /api/run/{id}/kill` terminates
+  every live benchy process of that run, and the run is marked failed.
 - **Chart controls** (right panel): enable/disable graphs (metrics), hosts,
   and element categories (`profile (xN)`); each group has a
   Select All / Unselect All toggle. Nothing is selected by default —
   select what you want to compare.
-- **Grouped bar charts**: one metric per card; each test group (`profile
-  (xN)`) gets its own chart side by side, with its legend above it
-  (header + color chips `server/model/run` matching the bar colors). All
-  charts in a card share one y-axis range so the groups stay comparable;
-  x labels show context depth. Bar width depends only on the number of
-  hosts x runs, so all groups render identical-width bars at any selection
-  of profile types. Run-to-run std is kept in the data (not drawn).
+- **Combine Concurrencies** switch (below Elements, **on by default**):
+  when on, all selected concurrency levels of a profile are merged into a
+  single chart — bars of `x1/x2/x3 …` sit edge-to-edge in each depth cell,
+  and the legend is one chip per run:
+  `profile (xN) - server/model/run`. Switch it off to go back to one chart
+  per `profile (xN)` with the usual gaps.
+- **Grouped bar charts**: one metric per card; each test group gets its own
+  chart side by side, with its legend above it (header + color chips
+  `server/model/run` matching the bar colors). All charts in a card share
+  one y-axis range so the groups stay comparable; x labels show context
+  depth. Bar width depends only on the number of hosts x runs, so all
+  groups render identical-width bars at any selection of profile types.
+  Run-to-run std is kept in the data (not drawn).
+- **Layout**: the graphs always fit between the server/profile/start pane
+  and the Chart controls — if the selected elements need more room, the
+  row scrolls horizontally **inside the card** (scrollbar on the pane
+  itself), never under the controls or at the page bottom.
 - **Failure handling**: a run that ends with any failed entry shows a
   collapsed failure strip with the full tool log — and no partial graphs.
 - **Theme** toggle (dark/light).
@@ -84,22 +96,27 @@ as a rough guide only.
 
 ### The screenshots
 
-This run compares two servers both serving the same Qwen model:
-`llama-cpp` (RTX 3090 Ti, Q4_K_M + MTP spec-decode) vs `dgx` (GB10,
-full precision). The charts show generation being bandwidth-bound (llama ~8
-tokens/s vs dgx ~70 t/s — quantized weights + speculative decoding), while
-prefill favors the DGX.
+The run compares three completed benchmarks against the same `dgx` server
+(GB10) serving `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`, at concurrency
+**3 / 2 / 1** — the three most recent "done" runs. The charts show
+**Combine Concurrencies** at work (default on): `chat` and `fixed-length`
+each render as one chart with the three concurrency levels adjacent in
+every depth cell, and the legend chips identify each run
+(`chat (x3) - dgx/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp/111627` …).
+
+![Dashboard](docs/screenshots/dashboard.png)
 
 ![Chart controls](docs/screenshots/chart-controls.png)
 
 The right panel filters: Graphs (which metric cards render), Hosts (which
-servers' bars), Elements (which `profile (xN)` categories).
+servers' bars), Elements (which `profile (xN)` categories) — and the
+**Combine Concurrencies** switch.
 
 ![Grouped legends](docs/screenshots/grouped-legends.png)
 
-Each test category is its own chart with its legend block above it; chips
-match bar colors and include the model
-(`dgx/Qwen/Qwen3.8-27B/074620`, `llama-cpp/Qwen3.8-27B-UD-Q4_K_M/074620`).
+With Combine on, each profile is its own chart with a per-trace legend
+above it; chips match bar colors and include the concurrency and model
+(`chat (x2) - dgx/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp/105008`).
 
 ---
 
