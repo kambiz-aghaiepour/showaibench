@@ -44,6 +44,70 @@ function hueGap(a, b) {
 /* Minimum hue separation between any two traces grouped in one chart. */
 const MIN_HUE_GAP = 45;
 
+/* ------------------------------------------------------- 3D bar shading */
+
+/* Pseudo-3D bevel for flat bars: after every Plotly draw, replace the solid
+   fill of each bar with a per-trace vertical gradient (light top edge ->
+   base -> darker shadow). Pure SVG defs + path fill override; hover, legends,
+   tooltips and the grouped layout are untouched. */
+let barGid = 0;
+
+function shadeColor(hsl, dl) { // hsl string -> lighter/darker hsl string
+  const m = /hsl\(([\d.]+),\s*([\d.]+)%,\s*([\d.]+)%\)/.exec(hsl);
+  if (!m) return hsl;
+  const l = Math.max(12, Math.min(92, parseFloat(m[3]) + dl));
+  return `hsl(${m[1]}, ${m[2]}%, ${l}%)`;
+}
+
+function applyBarShading(slot) {
+  if (!state.bar3d) return;
+  const svg = slot.querySelector("svg.main-svg");
+  if (!svg) return;
+  let defs = svg.querySelector("defs.bar3d");
+  if (!defs) {
+    defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    defs.setAttribute("class", "bar3d");
+    svg.prepend(defs);
+  }
+  defs.replaceChildren();
+  const groups = slot.querySelectorAll(".barlayer .trace");
+  groups.forEach((g, i) => {
+    const paths = g.querySelectorAll("path");
+    if (!paths.length) return;
+    const color = slot.data?.[i]?.marker?.color; // hsl() from traceColor()
+    if (!color) return;
+    const id = `b3d${++barGid}`;
+    const grad = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+    grad.setAttribute("id", id);
+    grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0");
+    grad.setAttribute("x2", "0"); grad.setAttribute("y2", "1");
+    for (const [off, color2] of [
+      [0, shadeColor(color, 22)],
+      [0.32, shadeColor(color, 4)],
+      [0.62, color],
+      [1, shadeColor(color, -18)],
+    ]) {
+      const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+      stop.setAttribute("offset", off);
+      stop.style.stopColor = color2; // CSS property: hsl() valid there, but
+      grad.append(stop);             // not as an SVG stop-color attribute
+    }
+    defs.append(grad);
+    // one gradient per trace, applied to every bar (every depth) of it
+    for (const p of paths) p.style.fill = `url(#${id})`;
+  });
+}
+
+function unapplyBarShading(slot) {
+  const groups = slot.querySelectorAll(".barlayer .trace");
+  groups.forEach((g, i) => {
+    const color = slot.data?.[i]?.marker?.color;
+    if (!color) return;
+    for (const p of g.querySelectorAll("path")) p.style.fill = color; // solid
+  });
+  slot.querySelector("defs.bar3d")?.remove();
+}
+
 const state = {
   servers: [],
   profiles: [],
@@ -59,6 +123,7 @@ const state = {
   hostsOn: new Set(),   // server names included in charts
   elementsOn: new Set(), // "profile|concurrency" element categories shown
   combineConc: true,    // merge a profile's concurrencies into one chart
+  bar3d: true,          // gradient-shade bars for a beveled 3D look
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -517,6 +582,18 @@ function renderControls() {
     renderCharts();
     renderControls();
   };
+  const b3d = $("#bar-3d");
+  b3d.classList.toggle("on", state.bar3d);
+  b3d.setAttribute("aria-checked", state.bar3d ? "true" : "false");
+  b3d.onclick = () => {
+    state.bar3d = !state.bar3d;
+    b3d.classList.toggle("on", state.bar3d);
+    b3d.setAttribute("aria-checked", state.bar3d ? "true" : "false");
+    // shade in place — no full re-render, so chart width/scrollbars stay put
+    for (const slot of document.querySelectorAll("#charts .plot-slot")) {
+      if (state.bar3d) applyBarShading(slot); else unapplyBarShading(slot);
+    }
+  };
 }
 
 function cssVar(name) {
@@ -650,7 +727,7 @@ function renderCharts() {
     // its final flex width (creating them inline left earlier slots at the
     // transient full-row width, which then never resized)
     for (const { slot, g } of pending) {
-      Plotly.newPlot(slot, g.traces, {
+      const plot = Plotly.newPlot(slot, g.traces, {
         margin: { l: 44, r: 8, t: 4, b: 36 },
         showlegend: false,
         font: { size: 11, color: cssVar("--text") },
@@ -668,6 +745,11 @@ function renderCharts() {
         },
         yaxis: { range: yrange, gridcolor: cssVar("--border"), zeroline: false },
       }, { responsive: true, displayModeBar: false });
+      // re-apply the bevel after every Plotly redraw (initial + resizes);
+      // the rAF covers the brief window before the first async draw finishes
+      slot.on("plotly_afterplot", () => applyBarShading(slot));
+      applyBarShading(slot);
+      requestAnimationFrame(() => applyBarShading(slot));
     }
   }
 }

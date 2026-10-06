@@ -87,6 +87,11 @@ servers.conf ──► main.py (FastAPI, 127.0.0.1:8585)
   itself), never under the controls or at the page bottom.
 - **Failure handling**: a run that ends with any failed entry shows a
   collapsed failure strip with the full tool log — and no partial graphs.
+- **Bar Style** — **3D bars** switch (default **on**): shading every bar with a
+  per-trace vertical gradient (light top edge → base → dark shadow) via SVG
+  defs overlays. It's a beveled look on the flat grouped charts — Plotly bar
+  traces have no native 3D mode — and it composes with everything else
+  (combine mode, tooltips, hover, legends, resize).
 - **Theme** toggle (dark/light).
 
 ### Workload profiles
@@ -125,9 +130,9 @@ concurrency levels — when Combine Concurrencies is on) — and the
 ![Grouped legends](docs/screenshots/grouped-legends.png)
 
 With Combine on, each profile is its own chart with a compact two-line
-legend above it (`chat` / `dgx`); hovering any bar reveals the full
-identity — server, model, concurrency, depth, date, time, run, and the
-measured value with its std.
+legend above it (`chat` / `dgx`), 3D-beveled bars, and the hover tooltip
+open on the first bar — server, model, concurrency, depth, date, time,
+run, prompt/completion sizes and the measured value with its std.
 
 ---
 

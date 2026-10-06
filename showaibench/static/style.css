@@ -345,21 +345,40 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
   color: var(--text);
   font-weight: 600;
 }
-.card .subplot-row { display: flex; gap: 10px; align-items: flex-start; overflow-x: auto; }
+.card .subplot-row { display: flex; gap: 10px; align-items: flex-start; overflow-x: auto; max-width: 100%; min-width: 0; }
 .card .subplot { flex: 1 1 0; min-width: 190px; text-align: center; }
 .card .plot-slot { width: 100%; height: 260px; }
-.lg-head {
-  font-size: 11px; font-weight: 600; color: var(--text);
-  margin: 0 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+
+/* Scrollbars follow the active theme and only paint when content overflows
+   (overflow-x/y: auto); no light-on-dark artifacts. */
+.subplot-row, #chart-controls, .ctl-scroll, .ms-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
+}
+.subplot-row::-webkit-scrollbar, #chart-controls::-webkit-scrollbar,
+.ctl-scroll::-webkit-scrollbar, .ms-panel::-webkit-scrollbar {
+  width: 8px; height: 8px;
+}
+.subplot-row::-webkit-scrollbar-thumb, #chart-controls::-webkit-scrollbar-thumb,
+.ctl-scroll::-webkit-scrollbar-thumb, .ms-panel::-webkit-scrollbar-thumb {
+  background: var(--muted); border-radius: 4px;
+}
+.subplot-row::-webkit-scrollbar-track, #chart-controls::-webkit-scrollbar-track,
+.ctl-scroll::-webkit-scrollbar-track, .ms-panel::-webkit-scrollbar-track,
+.subplot-row::-webkit-scrollbar-corner, #chart-controls::-webkit-scrollbar-corner,
+.ctl-scroll::-webkit-scrollbar-corner, .ms-panel::-webkit-scrollbar-corner {
+  background: transparent;
 }
 .lg-chips {
-  display: flex; flex-wrap: wrap; gap: 1px 6px;
+  display: flex; flex-wrap: wrap; gap: 2px 6px;
   justify-content: center; margin-bottom: 2px;
 }
 .lg-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 10px; color: var(--text); white-space: nowrap;
-  background: var(--panel); padding: 1px 4px; border-radius: 4px;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--panel); padding: 2px 6px; border-radius: 4px;
 }
 .lg-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.lg-lines { display: flex; flex-direction: column; line-height: 1.25; text-align: left; }
+.lg-l1 { font-size: 10px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.lg-l2 { font-size: 10px; color: var(--muted); white-space: nowrap; }
 .empty { color: var(--muted); padding: 24px; text-align: center; grid-column: 1 / -1; }

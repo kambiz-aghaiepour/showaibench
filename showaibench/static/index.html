@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>show-ai-bench-results</title>
-  <link rel="stylesheet" href="/static/style.css?v=11">
+  <link rel="stylesheet" href="/static/style.css?v=12">
   <script src="/static/plotly.min.js"></script>
-  <script src="/static/app.js?v=41" defer></script>
+  <script src="/static/app.js?v=45" defer></script>
 </head>
 <body>
   <header>
@@ -92,6 +92,13 @@
           <span class="switch-knob"></span>
         </button>
         <div class="status-note">On: each profile chart merges all selected concurrencies (bars adjacent, shared edges); Off: one chart per profile × concurrency.</div>
+      </section>
+      <section>
+        <div class="ctl-head"><h3>Bar Style</h3></div>
+        <button class="switch on" id="bar-3d" role="switch" aria-checked="true" title="Shade bars with a 3D bevel gradient">
+          <span class="switch-knob"></span>
+        </button>
+        <div class="status-note">3D bars: vertical light-to-dark gradient per bar (beveled look). Off: flat solid bars.</div>
       </section>
     </aside>
   </main>
