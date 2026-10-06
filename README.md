@@ -65,10 +65,9 @@ servers.conf ──► main.py (FastAPI, 127.0.0.1:8585)
 - **Combine Concurrencies** switch (below Elements, **on by default**):
   when on, all selected concurrency levels of a profile are merged into a
   single chart — bars of `x1/x2/x3 …` sit edge-to-edge in each depth cell,
-  and the legend is one two-line chip per run: the profile on the first
-  line (`chat`, or `chat (x1)` when the switch is off) and the server name
-  below it. Switch it off to go back to one chart per `profile (xN)` with
-  the usual gaps.
+  and the legend is one two-line chip per run: `profile (xN)` on the first
+  line (`chat (x3)`, `chat (x2)`, …) with the server name below it. Switch
+  it off to go back to one chart per `profile (xN)` with the usual gaps.
 - **Bar tooltip**: hovering a bar shows a single multi-line label — a bold
   header (`dgx / chat (x3) / 20261006-111627`) with the full identity and
   measurement of that bar underneath: Server, Model, Concurrency, Depth,
@@ -130,9 +129,10 @@ concurrency levels — when Combine Concurrencies is on) — and the
 ![Grouped legends](docs/screenshots/grouped-legends.png)
 
 With Combine on, each profile is its own chart with a compact two-line
-legend above it (`chat` / `dgx`), 3D-beveled bars, and the hover tooltip
-open on the first bar — server, model, concurrency, depth, date, time,
-run, prompt/completion sizes and the measured value with its std.
+legend above it (`chat (x3)` / `dgx`, one chip per run), 3D-beveled bars,
+and the hover tooltip open on the first bar — server, model, concurrency,
+depth, date, time, run, prompt/completion sizes and the measured value
+with its std.
 
 ---
 

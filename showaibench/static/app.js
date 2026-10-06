@@ -712,7 +712,7 @@ function renderCharts() {
         chips.append(el("span", { class: "lg-chip" }, [
           el("i", { style: `background:${e.color}` }),
           el("span", { class: "lg-lines" }, [
-            el("span", { class: "lg-l1", text: combine ? e.profile : `${e.profile} (x${e.conc})` }),
+            el("span", { class: "lg-l1", text: `${e.profile} (x${e.conc})` }),
             el("span", { class: "lg-l2", text: e.sname }),
           ]),
         ]));
