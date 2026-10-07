@@ -107,6 +107,29 @@ Depths presets `0` … `0 4096 8192 16384 32768` (default `0 4096 8192`).
 The estimate box predicts wall time from ~1000/80 t/s assumptions — use it
 as a rough guide only.
 
+### Publishing reports as GitHub gists
+
+If `gh` is installed and authenticated for the user running the app, the left
+panel shows a **Gist** section:
+
+![Gist panel](docs/screenshots/gist-panel.png)
+
+- **Create Gist** (enabled once charts with data are rendered) builds a
+  markdown report of exactly what is on screen — runs/servers/models table,
+  parameters (concurrency, depths, samples), the full numeric results table
+  (per run × server × profile × concurrency × depth), and **one PNG per
+  metric card** captured from the live charts — publishes it as a **secret**
+  gist, then shows a modal with the gist URL plus **Copy** / **Copy and
+  Close**. Secret gists are not listed publicly but anyone with the URL can
+  view them.
+- **Manage Gists** lists the gists this app created that still exist on
+  GitHub (purged ones are dropped), each with **Copy** (URL to clipboard)
+  and **Delete** (with confirmation, via `gh gist delete`).
+
+Images are attached by cloning the gist's git repository, committing the
+PNGs and pushing — `gh gist create` itself refuses binary files. The list of
+created gists is kept in `gists.json` (gitignored) next to the app.
+
 ### The screenshots
 
 The run compares three completed benchmarks against the same `dgx` server

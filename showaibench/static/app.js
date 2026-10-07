@@ -594,10 +594,293 @@ function renderControls() {
       if (state.bar3d) applyBarShading(slot); else unapplyBarShading(slot);
     }
   };
+  updateGistCreate();
 }
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/* ------------------------------------------------------------- gists */
+
+const fmtNum = (v) => (typeof v === "number" && isFinite(v) ? v.toFixed(2) : "");
+
+function copyToClipboard(text, done) {
+  const copy = () => navigator.clipboard?.writeText(text);
+  if (copy() && typeof copy()?.then === "function") {
+    copy().then(() => done(true)).catch(() => done(false));
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  ta.remove();
+  done(ok);
+}
+
+/* One markdown report covering exactly what the charts currently show. */
+function buildGistMarkdown() {
+  const runIds = [...state.selectedRuns];
+  const profs = [...state.selectedProfiles];
+  const lines = [];
+  lines.push("# show-aibench benchmark report");
+  lines.push("", `Generated ${new Date().toISOString().slice(0, 16).replace("T", " ")} by showaibench.`);
+  lines.push("", "## Runs", "", "| Run | Status | Started | Server | Model |", "|---|---|---|---|---|");
+  for (const id of runIds) {
+    const doc = state.runDocs[id];
+    if (!doc) continue;
+    for (const sname of Object.keys(doc.servers || {})) {
+      if (!state.hostsOn.has(sname)) continue;
+      const model = doc.servers?.[sname]?.model || "?";
+      lines.push(`| ${id} | ${doc.status} | ${doc.started_at || "?"} | ${sname} | ${model} |`);
+    }
+  }
+  lines.push("", "## Parameters", "", "| Run | Profile | Concurrency | Depths | Samples |", "|---|---|---|---|---|");
+  for (const id of runIds) {
+    const doc = state.runDocs[id];
+    if (!doc) continue;
+    for (const profile of profs) {
+      const servers = Object.entries(doc.results || {})
+        .filter(([s]) => state.hostsOn.has(s));
+      for (const [sname, ps] of servers) {
+        const entry = ps?.[profile];
+        if (!entry || entry.status !== "ok") continue;
+        const rows = entry.rows || [];
+        if (!rows.length) continue;
+        const conc = rows[0].concurrency;
+        const depths = [...new Set(rows.map((r) => r.depth))].join(", ");
+        const s = doc.settings || {};
+        lines.push(`| ${id} | ${profile} | ${conc} | ${depths} | ${s.runs ?? "?"} |`);
+      }
+    }
+  }
+  lines.push("", "## Results", "");
+  lines.push("| Run | Server | Profile | Concurrency | Depth | PP (t/s) | TG (t/s) | Peak (t/s) | TTFR (ms) | Est. PPT (ms) | E2E TTFT (ms) |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const id of runIds) {
+    const doc = state.runDocs[id];
+    if (!doc) continue;
+    for (const profile of profs) {
+      for (const [sname, ps] of Object.entries(doc.results || {})) {
+        if (!state.hostsOn.has(sname)) continue;
+        const entry = ps?.[profile];
+        if (!entry || entry.status !== "ok") continue;
+        const conc = entry.rows?.[0]?.concurrency;
+        if (!state.elementsOn.has(`${profile}|${conc}`)) continue;
+        for (const r of entry.rows || []) {
+          lines.push(`| ${id} | ${sname} | ${profile} | ${r.concurrency} | ${r.depth} | ${fmtNum(r.pp_tps)} | ${fmtNum(r.tg_tps)} | ${fmtNum(r.peak_tps)} | ${fmtNum(r.ttfr_ms)} | ${fmtNum(r.est_ppt_ms)} | ${fmtNum(r.e2e_ttft_ms)} |`);
+        }
+      }
+    }
+  }
+  lines.push("", "## Graphs", "");
+  for (const card of document.querySelectorAll("#charts .card")) {
+    const title = card.querySelector("h3")?.textContent || "chart";
+    const key = card.dataset.metric || "chart";
+    lines.push(`### ${title}`, `![${title}]([[IMG:${key}.png]])`, "");
+  }
+  return lines.join("\n");
+}
+
+/* One PNG per metric card: each subplot is rendered through Plotly.toImage
+   and stitched onto a canvas with its legend chips drawn above it. */
+async function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error("image decode failed"));
+    im.src = src;
+  });
+}
+
+async function cardToPng(card) {
+  const subs = Array.from(card.querySelectorAll(".subplot-row > .subplot"));
+  if (!subs.length) return null;
+  const W = 340, H = 300, capH = 84, gap = 10, pad = 8, DPR = 2;
+  const width = subs.length * W + (subs.length - 1) * gap + pad * 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = width * DPR;
+  canvas.height = (capH + H + pad * 2) * DPR;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(DPR, DPR);
+  ctx.fillStyle = "#10141a";
+  ctx.fillRect(0, 0, width, capH + H + pad * 2);
+  for (let i = 0; i < subs.length; i++) {
+    const x = pad + i * (W + gap);
+    const url = await Plotly.toImage(subs[i].querySelector(".plot-slot"), {
+      format: "png", width: W, height: H, scale: 1,
+    });
+    const img = await loadImage(url);
+    ctx.drawImage(img, x, capH + pad);
+    let cy = pad + 6;
+    for (const chip of subs[i].querySelectorAll(".lg-chip")) {
+      const color = chip.querySelector("i")?.style.background || "#888";
+      const l1 = chip.querySelector(".lg-l1")?.textContent || "";
+      const l2 = chip.querySelector(".lg-l2")?.textContent || "";
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x + 12, cy + 5, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#e8eaee";
+      ctx.font = "600 11px sans-serif";
+      ctx.fillText(l1, x + 21, cy + 9);
+      ctx.fillStyle = "#9aa4b2";
+      ctx.font = "10px sans-serif";
+      ctx.fillText(l2, x + 21, cy + 21);
+      cy += 22;
+    }
+  }
+  return canvas.toDataURL("image/png");
+}
+
+async function captureCardImages() {
+  const images = [];
+  for (const card of document.querySelectorAll("#charts .card")) {
+    const png = await cardToPng(card);
+    if (!png) continue;
+    images.push({ name: `${card.dataset.metric || "chart"}.png`, data: png.split(",")[1] });
+  }
+  return images;
+}
+
+function gistModal(title, body, actions) {
+  const overlay = el("div", { class: "modal-overlay" });
+  const modal = el("div", { class: "modal" });
+  modal.append(el("h3", { text: title }));
+  modal.append(...body);
+  const bar = el("div", { class: "modal-actions" });
+  bar.append(...actions);
+  modal.append(bar);
+  overlay.append(modal);
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", esc); }
+  });
+  document.body.append(overlay);
+  return { overlay, modal };
+}
+
+async function createGist() {
+  const btn = $("#gist-create");
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = "Creating…";
+  try {
+    const markdown = buildGistMarkdown();
+    const images = await captureCardImages();
+    const now = new Date();
+    const stamp = now.toISOString().slice(0, 16).replace("T", " ");
+    const res = await api("/api/gist/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: `show-aibench-report-${stamp.replace(/[ :]/g, "-")}.md`,
+        description: `show-aibench benchmark report ${stamp}`,
+        markdown,
+        images,
+      }),
+    });
+    const input = el("input", { class: "gist-url", readonly: "", value: res.url, type: "text" });
+    const copy = el("button", { class: "btn", text: "Copy" });
+    const copyClose = el("button", { class: "btn", text: "Copy and Close" });
+    const note = el("p", { class: "status-note", text: "" });
+    const done = (ok) => { note.textContent = ok ? "Copied to clipboard." : "Clipboard unavailable — select the URL and copy manually."; };
+    copy.onclick = () => copyToClipboard(res.url, done);
+    copyClose.onclick = () => copyToClipboard(res.url, (ok) => { done(ok); setTimeout(() => overlay.remove(), 250); });
+    const { overlay } = gistModal("Gist created", [
+      el("p", { text: `${res.filename} was published as a secret gist with ${images.length} chart image(s).` }),
+      input, note,
+    ], [copy, copyClose]);
+  } catch (err) {
+    gistModal("Gist creation failed", [
+      el("p", { class: "modal-error", text: String(err.message || err) }),
+    ], [el("button", { class: "btn", text: "Close", onclick: (e) => e.target.closest(".modal-overlay")?.remove() })]);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+}
+
+function gistDeleteModal(entry, refresh) {
+  const overlay = el("div", { class: "modal-overlay" });
+  const modal = el("div", { class: "modal" });
+  modal.append(el("h3", { text: "Delete gist?" }));
+  modal.append(el("p", { text: `Delete "${entry.description || entry.filename}" (${entry.url}) from GitHub? This cannot be undone.` }));
+  const bar = el("div", { class: "modal-actions" });
+  const cancel = el("button", { class: "btn", text: "Cancel" });
+  const ok = el("button", { class: "btn danger", text: "Delete" });
+  const err = el("p", { class: "modal-error" });
+  cancel.onclick = () => overlay.remove();
+  ok.onclick = async () => {
+    ok.disabled = true;
+    try {
+      await api(`/api/gist/${entry.id}`, { method: "DELETE" });
+      overlay.remove();
+      refresh();
+    } catch (e) {
+      ok.disabled = false;
+      err.textContent = `delete failed: ${e.message}`;
+    }
+  };
+  bar.append(cancel, ok);
+  modal.append(bar, err);
+  overlay.append(modal);
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.append(overlay);
+}
+
+async function manageGists() {
+  let gists;
+  try {
+    gists = (await api("/api/gist/list")).gists;
+  } catch (err) {
+    gistModal("Manage Gists", [
+      el("p", { class: "modal-error", text: `could not list gists: ${err.message}` }),
+    ], [el("button", { class: "btn", text: "Close", onclick: (e) => e.target.closest(".modal-overlay")?.remove() })]);
+    return;
+  }
+  const list = el("div", { class: "gist-list" });
+  if (!gists.length) list.append(el("p", { class: "status-note", text: "No gists created by this app (or all have been deleted)." }));
+  for (const g of gists) {
+    const row = el("div", { class: "gist-row" });
+    row.append(el("div", { text: g.description || g.filename }));
+    row.append(el("div", { class: "gist-meta", text: `${g.url} · ${g.created_at}` }));
+    const actions = el("div", { class: "gist-actions" });
+    const copy = el("button", { class: "btn", text: "Copy" });
+    copy.onclick = () => copyToClipboard(g.url, (ok) => { copy.textContent = ok ? "Copied" : "Ctrl+C"; setTimeout(() => { copy.textContent = "Copy"; }, 1200); });
+    const del = el("button", { class: "btn danger", text: "Delete" });
+    del.onclick = () => gistDeleteModal(g, refresh);
+    actions.append(copy, del);
+    row.append(actions);
+    list.append(row);
+  }
+  function refresh() {
+    overlay.remove();
+    manageGists();
+  }
+  const { overlay } = gistModal("Manage Gists", [
+    el("p", { text: "Gists previously created by this app that still exist on GitHub." }), list,
+  ], [el("button", { class: "btn", text: "Close", onclick: () => overlay.remove() })]);
+}
+
+function initGistPanel() {
+  (async () => {
+    let status;
+    try { status = await api("/api/gist/status"); } catch { return; }
+    if (!status.available || !status.authenticated) return; // panel stays hidden
+    const panel = $("#gist-panel");
+    panel.classList.remove("hidden");
+    $("#gist-status").textContent = `GitHub: ${status.user}`;
+    $("#gist-create").onclick = createGist;
+    $("#gist-manage").onclick = manageGists;
+  })();
+}
+
+/* Create Gist is only meaningful while charts with data are rendered. */
+function updateGistCreate() {
+  const btn = $("#gist-create");
+  btn.disabled = !document.querySelector("#charts .card .barlayer .trace path");
 }
 
 function renderCharts() {
@@ -627,6 +910,7 @@ function renderCharts() {
 
   for (const metric of metrics) {
     const card = el("div", { class: "card" });
+    card.dataset.metric = metric.key;
     card.append(el("h3", { text: metric.title }));
     container.append(card);
 
@@ -806,6 +1090,7 @@ async function main() {
     $(id).addEventListener("input", updateTimeEstimate);
   }
   updateTimeEstimate();
+  initGistPanel();
   await refreshRuns();
   startWatching();
 }

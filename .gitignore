@@ -7,3 +7,4 @@ archive/
 webapp.log
 servers.conf
 .DS_Store
+gists.json

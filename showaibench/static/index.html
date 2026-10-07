@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>show-ai-bench-results</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=13">
   <script src="/static/plotly.min.js"></script>
-  <script src="/static/app.js?v=46" defer></script>
+  <script src="/static/app.js?v=48" defer></script>
 </head>
 <body>
   <header>
@@ -19,6 +19,12 @@
       <section>
         <div class="ctl-head"><h2>Servers</h2><button class="ctl-all" id="servers-all">Select All</button></div>
         <div id="servers" class="choices"></div>
+      </section>
+      <section id="gist-panel" class="hidden">
+        <div class="ctl-head"><h2>Gist</h2></div>
+        <button id="gist-create" class="primary" disabled>Create Gist</button>
+        <button id="gist-manage" class="gist-btn">Manage Gists</button>
+        <div id="gist-status" class="status-note"></div>
       </section>
       <section>
         <div class="ctl-head"><h2>Profiles</h2><button class="ctl-all" id="profiles-all">Select All</button></div>

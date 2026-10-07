@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import PROFILES, load_servers
+from .gists import create_gist, decode_image, delete_gist, gh_status, list_valid, record
 from .runner import RunManager
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -79,6 +80,45 @@ def create_app(manager: RunManager, config_path: Path):
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"killed": killed}
+
+    @app.get("/api/gist/status")
+    def gist_status():
+        return gh_status()
+
+    @app.post("/api/gist/create")
+    def gist_create(body: dict):
+        images: dict[str, bytes] = {}
+        try:
+            for img in body.get("images") or []:
+                raw = decode_image(img.get("name", ""), img.get("data", ""))
+                images[img["name"]] = raw
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            entry = create_gist(
+                body.get("filename") or "show-aibench-report.md",
+                body.get("description") or "",
+                body.get("markdown") or "",
+                images,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"gist creation failed: {exc}") from exc
+        record(entry)
+        return entry
+
+    @app.get("/api/gist/list")
+    def gist_list():
+        return {"gists": list_valid()}
+
+    @app.delete("/api/gist/{gist_id}")
+    def gist_delete(gist_id: str):
+        try:
+            delete_gist(gist_id)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"gist delete failed: {exc}") from exc
+        return {"deleted": True}
 
     @app.get("/api/health")
     def health():

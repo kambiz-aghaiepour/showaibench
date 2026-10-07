@@ -276,6 +276,26 @@ button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
   cursor: pointer;
 }
 .modal-actions .btn.danger { border-color: #c0392b; background: #c0392b; color: #fff; }
+.gist-btn {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 13px; padding: 7px 14px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  cursor: pointer;
+}
+.gist-btn:disabled { opacity: 0.45; cursor: default; }
+.gist-list { max-height: 330px; overflow-y: auto; }
+.gist-row {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; margin-bottom: 8px; font-size: 12px;
+}
+.gist-row .gist-meta { color: var(--muted); margin: 2px 0 6px; word-break: break-all; }
+.gist-row .gist-actions { display: flex; gap: 8px; }
+.gist-url {
+  width: 100%; box-sizing: border-box; margin: 8px 0 10px;
+  font-size: 12px; padding: 6px 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
 #run-live .row { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
 #run-live .live-entry { margin-top: 8px; }
 #run-live .live-entry-label {
