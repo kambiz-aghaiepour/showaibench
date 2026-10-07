@@ -621,14 +621,46 @@ function copyToClipboard(text, done) {
   done(ok);
 }
 
-/* One markdown report covering exactly what the charts currently show. */
+/* One markdown report covering exactly what the charts currently show.
+   Order: TOC, Test runs summary, Graphs, Runs, Parameters, Results. */
 function buildGistMarkdown() {
   const runIds = [...state.selectedRuns];
   const profs = [...state.selectedProfiles];
   const lines = [];
   lines.push("# show-aibench benchmark report");
   lines.push("", `Generated ${new Date().toISOString().slice(0, 16).replace("T", " ")} by showaibench.`);
-  lines.push("", "## Runs", "", "| Run | Status | Started | Server | Model |", "|---|---|---|---|---|");
+  lines.push("", "## Contents", "",
+    "- [Test runs](#test-runs)",
+    "- [Graphs](#graphs)",
+    "- [Runs](#runs)",
+    "- [Parameters](#parameters)",
+    "- [Results](#results)");
+  lines.push("", "## Test runs", "",
+    "| Date / Time | Server | Model | Concurrency | Depths | Runs | Profiles |",
+    "|---|---|---|---|---|---|---|");
+  for (const id of runIds) {
+    const doc = state.runDocs[id];
+    if (!doc) continue;
+    const s = doc.settings || {};
+    const conc = s.concurrency ?? "?";
+    const samples = s.runs ?? "?";
+    const depths = (s.depths || []).length ? (s.depths || []).join(", ") : "?";
+    const started = doc.started_at || "?";
+    for (const [sname, ps] of Object.entries(doc.results || {})) {
+      if (!state.hostsOn.has(sname)) continue;
+      const profsOk = profs.filter((p) => ps?.[p]?.status === "ok" && (ps[p].rows || []).length);
+      if (!profsOk.length) continue;
+      const model = doc.servers?.[sname]?.model || "?";
+      lines.push(`| ${started} | ${sname} | ${model} | ${conc} | ${depths} | ${samples} | ${profsOk.join(", ")} |`);
+    }
+  }
+  lines.push("", "## Graphs", "");
+  for (const card of document.querySelectorAll("#charts .card")) {
+    const title = card.querySelector("h3")?.textContent || "chart";
+    const key = card.dataset.metric || "chart";
+    lines.push(`### ${title}`, `![${title}]([[IMG:${key}.png]])`, "");
+  }
+  lines.push("## Runs", "", "| Run | Status | Started | Server | Model |", "|---|---|---|---|---|");
   for (const id of runIds) {
     const doc = state.runDocs[id];
     if (!doc) continue;
@@ -676,12 +708,6 @@ function buildGistMarkdown() {
       }
     }
   }
-  lines.push("", "## Graphs", "");
-  for (const card of document.querySelectorAll("#charts .card")) {
-    const title = card.querySelector("h3")?.textContent || "chart";
-    const key = card.dataset.metric || "chart";
-    lines.push(`### ${title}`, `![${title}]([[IMG:${key}.png]])`, "");
-  }
   return lines.join("\n");
 }
 
@@ -699,7 +725,7 @@ async function loadImage(src) {
 async function cardToPng(card) {
   const subs = Array.from(card.querySelectorAll(".subplot-row > .subplot"));
   if (!subs.length) return null;
-  const W = 340, H = 300, capH = 84, gap = 10, pad = 8, DPR = 2;
+  const W = 340, H = 300, capH = 84, gap = 10, pad = 8, DPR = 1.5;
   const width = subs.length * W + (subs.length - 1) * gap + pad * 2;
   const canvas = document.createElement("canvas");
   canvas.width = width * DPR;
@@ -775,7 +801,9 @@ async function createGist() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        filename: `show-aibench-report-${stamp.replace(/[ :]/g, "-")}.md`,
+        // "a-" prefix: GitHub shows the alphabetically-first gist file by
+        // default, so the report (not a chart PNG) is what the gist opens on
+        filename: `a-show-aibench-report-${stamp.replace(/[ :]/g, "-")}.md`,
         description: `show-aibench benchmark report ${stamp}`,
         markdown,
         images,

@@ -115,13 +115,15 @@ panel shows a **Gist** section:
 ![Gist panel](docs/screenshots/gist-panel.png)
 
 - **Create Gist** (enabled once charts with data are rendered) builds a
-  markdown report of exactly what is on screen — runs/servers/models table,
-  parameters (concurrency, depths, samples), the full numeric results table
-  (per run × server × profile × concurrency × depth), and **one PNG per
-  metric card** captured from the live charts — publishes it as a **secret**
-  gist, then shows a modal with the gist URL plus **Copy** / **Copy and
-  Close**. Secret gists are not listed publicly but anyone with the URL can
-  view them.
+  markdown report of exactly what is on screen — a **TOC**, a **Test runs**
+  summary table (date/time, server, model, concurrency, depths, samples,
+  profiles — from the run.json data), **then graphs** (one PNG per metric
+  card captured from the live charts), followed by the runs/servers/models
+  table, parameters, and the full numeric results table — publishes it as a
+  **secret** gist named `a-show-aibench-report-…md` (the `a-` prefix makes
+  GitHub open the gist on the report, not on a chart PNG), then shows a
+  modal with the gist URL plus **Copy** / **Copy and Close**.
+  Secret gists are not listed publicly but anyone with the URL can view them.
 - **Manage Gists** lists the gists this app created that still exist on
   GitHub (purged ones are dropped), each with **Copy** (URL to clipboard)
   and **Delete** (with confirmation, via `gh gist delete`).
