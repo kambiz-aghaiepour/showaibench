@@ -605,6 +605,14 @@ function cssVar(name) {
 
 const fmtNum = (v) => (typeof v === "number" && isFinite(v) ? v.toFixed(2) : "");
 
+/* PP (t/s) is estimated as prompt tokens / (TTFR - measured latency), so a
+   remote server whose prefill is faster than the network round-trip yields
+   either no value (TTFR <= latency) or an implausibly high one (a few ms
+   difference). Flag those as artifacts: charts omit them, reports say n/a. */
+const PP_ARTIFACT_MAX_TPS = 1e5;
+const ppValue = (r) => (r && r.pp_tps > 0 && r.pp_tps <= PP_ARTIFACT_MAX_TPS ? r.pp_tps : null);
+const ppCell = (r) => (ppValue(r) == null ? "n/a" : fmtNum(r.pp_tps));
+
 function copyToClipboard(text, done) {
   const copy = () => navigator.clipboard?.writeText(text);
   if (copy() && typeof copy()?.then === "function") {
@@ -690,6 +698,7 @@ function buildGistMarkdown() {
     }
   }
   lines.push("", "## Results", "");
+  let reportHasPPNA = false;
   lines.push("| Run | Server | Profile | Concurrency | Depth | PP (t/s) | TG (t/s) | Peak (t/s) | TTFR (ms) | Est. PPT (ms) | E2E TTFT (ms) |");
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const id of runIds) {
@@ -703,10 +712,20 @@ function buildGistMarkdown() {
         const conc = entry.rows?.[0]?.concurrency;
         if (!state.elementsOn.has(`${profile}|${conc}`)) continue;
         for (const r of entry.rows || []) {
-          lines.push(`| ${id} | ${sname} | ${profile} | ${r.concurrency} | ${r.depth} | ${fmtNum(r.pp_tps)} | ${fmtNum(r.tg_tps)} | ${fmtNum(r.peak_tps)} | ${fmtNum(r.ttfr_ms)} | ${fmtNum(r.est_ppt_ms)} | ${fmtNum(r.e2e_ttft_ms)} |`);
+          if (ppValue(r) == null) reportHasPPNA = true;
+          lines.push(`| ${id} | ${sname} | ${profile} | ${r.concurrency} | ${r.depth} | ${ppCell(r)} | ${fmtNum(r.tg_tps)} | ${fmtNum(r.peak_tps)} | ${fmtNum(r.ttfr_ms)} | ${fmtNum(r.est_ppt_ms)} | ${fmtNum(r.e2e_ttft_ms)} |`);
         }
       }
     }
+  }
+  if (reportHasPPNA) {
+    lines.push("",
+      "> **PP (t/s) — n/a:** prompt-processing throughput is estimated as `prompt tokens / (TTFR − measured latency)`. ",
+      "> For a remote server whose prefill is faster than the network round-trip (e.g. the DGX here: TTFR ≈ 2–37 ms vs 16 ms measured latency), ",
+      "> that estimate is zero/negative or only a few milliseconds, so the value is either missing or implausibly high; ",
+      "> values above 100 000 t/s are flagged as artifacts and shown as **n/a**. ",
+      "> Servers with a slower or on-host prefill (llama-cpp on localhost, TTFR 0.9–13 s) are unaffected; ",
+      "> for fast remote servers compare TG, Peak and TTFR instead.");
   }
   return lines.join("\n");
 }
@@ -969,7 +988,11 @@ function renderCharts() {
           }
           for (const r of rows) if (!g.depths.includes(r.depth)) g.depths.push(r.depth);
           const byDepth = new Map(rows.map((r) => [r.depth, r]));
-          const yvals = g.depths.map((d) => byDepth.get(d)?.[metric.field] ?? null);
+          const yvals = g.depths.map((d) => {
+            const r = byDepth.get(d);
+            if (!r) return null;
+            return metric.key === "pp_tps" ? ppValue(r) : (r[metric.field] ?? null);
+          });
           for (const v of yvals) {
             if (v == null) continue;
             yMin = Math.min(yMin, v);
