@@ -5,6 +5,12 @@
 ;   model          = model id sent in the request body (OpenAI "model" field)
 ;   tokenizer-name = HF Hub repo used for prompt sizing / token counting
 ;   api-key        = optional Bearer token (omit or leave blank for no auth)
+;   ca-cert        = optional PEM file with the server's self-signed cert (or the
+;                    private CA that signed it) for https URLs. it is merged with the
+;                    system CA store, so Hugging Face tokenizer downloads keep working.
+;                    extract one with:
+;                      openssl s_client -connect host:port -servername host </dev/null \
+;                        | openssl x509 -out /etc/pki/tls/certs/that-host.pem
 ;   extra-body     = extra JSON fields merged into benchmark chat completions
 ;                    (here: disable reasoning/thinking so the benchmark measures
 ;                     answer tokens, not chain-of-thought)
@@ -22,3 +28,10 @@ model = Qwen3.8-27B-UD-Q4_K_M
 tokenizer-name = Qwen/Qwen3.8-27B
 api-key =
 extra-body = chat_template_kwargs={"enable_thinking":false}
+
+; self-signed https example:
+; [lab-gpu]
+; url = https://gpu.example.com:8443
+; model = my-model
+; tokenizer-name = Qwen/Qwen3.8-27B
+; ca-cert = /etc/pki/tls/certs/gpu.example.com.pem

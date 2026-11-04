@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import tempfile
 from pathlib import Path
@@ -198,6 +199,28 @@ def aggregate(report: dict, server_name: str, profile: str) -> list[dict]:
     return rows
 
 
+def _ca_bundle(extra_cert: str, dest: Path) -> Path:
+    """System CA store + a server's self-signed cert, written to `dest`.
+
+    llama-benchy verifies TLS with aiohttp (ssl.create_default_context), which
+    honours SSL_CERT_FILE. Pointing that at the server's cert alone would drop
+    the system roots and break the Hugging Face tokenizer download in the same
+    process, so combine both into one bundle."""
+    roots = []
+    system_cafile = ssl.get_default_verify_paths().cafile
+    if not system_cafile or not Path(system_cafile).is_file():
+        try:
+            import certifi  # bundled with requests/huggingface_hub
+            system_cafile = certifi.where()
+        except Exception:
+            system_cafile = None
+    if system_cafile and Path(system_cafile).is_file():
+        roots.append(Path(system_cafile).read_text(errors="replace"))
+    roots.append(Path(extra_cert).read_text(errors="replace"))
+    dest.write_text("\n".join(roots))
+    return dest
+
+
 def run_benchmark(
     tool: Path,
     server: ServerConfig,
@@ -215,9 +238,14 @@ def run_benchmark(
     with tempfile.TemporaryDirectory(dir=workdir, prefix=f"{_sanitize(server.name)}-") as tmp:
         save_path = Path(tmp) / "result.json"
         cmd = build_command(tool, server, profile, settings, save_path)
+        env = _tool_env()
+        if server.ca_cert:
+            bundle = _ca_bundle(server.ca_cert, Path(tmp) / "ca-bundle.pem")
+            for var in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+                env[var] = str(bundle)
         with open(log_path, "wb") as logf:
             proc = subprocess.Popen(
-                cmd, cwd=tmp, stdout=logf, stderr=subprocess.STDOUT, env=_tool_env()
+                cmd, cwd=tmp, stdout=logf, stderr=subprocess.STDOUT, env=env
             )
             register_proc(workdir.name, proc)
             try:

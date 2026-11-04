@@ -29,6 +29,7 @@ class ServerConfig:
     tokenizer_name: str  # HF Hub repo used for token counting
     api_key: str = ""
     extra_body: str = ""  # extra JSON fields merged into benchmark requests
+    ca_cert: str = ""  # PEM of a self-signed cert / private CA for https endpoints
 
     def as_json(self) -> dict:
         return {
@@ -65,5 +66,10 @@ def load_servers(path: str | Path) -> dict[str, ServerConfig]:
             tokenizer_name=tokenizer,
             api_key=raw.get("api_key", ""),
             extra_body=raw.get("extra_body", ""),
+            ca_cert=raw.get("ca_cert", ""),
         )
+        if servers[name].ca_cert and not Path(servers[name].ca_cert).is_file():
+            raise ValueError(
+                f"server '{name}' in {path}: ca-cert not found: {servers[name].ca_cert}"
+            )
     return servers

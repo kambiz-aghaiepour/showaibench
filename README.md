@@ -197,7 +197,19 @@ url = http://192.168.1.10:8000        ; /v1 is appended automatically
 model = org/model-name                ; id served by /v1/models
 tokenizer-name = org/model-name       ; HF repo for token counting
 api-key =                             ; optional Bearer token
+ca-cert = /etc/pki/tls/certs/host.pem ; optional: self-signed cert / private CA (https)
 extra-body = chat_template_kwargs={"enable_thinking":false}
+```
+
+For an https endpoint with a self-signed certificate, set `ca-cert` to the
+server's PEM (or the private CA that signed it). It is merged with the system
+CA store and exported to the `llama-benchy` process as `SSL_CERT_FILE`,
+`REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE`, so benchmark requests verify while
+tokenizer downloads from Hugging Face keep working. Extract the cert with:
+
+```bash
+openssl s_client -connect host:port -servername host </dev/null \
+  | openssl x509 -out /etc/pki/tls/certs/host.pem
 ```
 
 Changes require an app restart (config is read at startup). The app binds to
